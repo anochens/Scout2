@@ -38,6 +38,17 @@ def getBaseInfo(service, subservice):
         return {}
 
 
+def _cleanForES(value):
+    # turn nested dictionaries into json pretty-strings
+    # to not error in ElasticSearch
+    for k in value.keys():
+        if isinstance(value[k], dict) or \
+                (isinstance(value[k], list) and len(value[k]) > 0 and isinstance(value[k][0], dict)):
+            value[k] = json.dumps(value[k], indent=3)
+
+    return value
+
+
 # iterate through the problems and enhance info record with an array of their problems
 def getInfoWithProblems(service, info):
     data = getOrLoadData()
@@ -56,16 +67,10 @@ def getInfoWithProblems(service, info):
             if info_id in ",".join(problem["items"]): #get around the wierd prefix and suffix
 
                 info[info_id]["problems"].append(_select_keys(["description","level"], problem))
+                info[info_id]["problems"].append(problem)
 
         info[info_id] = _ignore_keys(["users","roles", "groups"], info[info_id])
-
-        # turn nested dictionaries into json pretty-strings
-        # to not error in ElasticSearch
-        for k in info[info_id].keys():
-            if isinstance(info[info_id][k], dict) or\
-                    (isinstance(info[info_id][k], list) and len(info[info_id][k]) > 0 and isinstance(info[info_id][k][0], dict)):
-                info[info_id][k] = json.dumps(info[info_id][k], indent=3)
-
+        #info[info_id] = _cleanForES(info[info_id])
 
     return info
 
@@ -90,16 +95,19 @@ def _ignore_keys(unwanted, mydict):
 # prepare and send a given record to kafka (insert @timestamp, etc.)
 def send_to_kafka(record):
     # TODO send to kafka
-    print(json.dumps(record,indent=3))
+    if len(record["problems"]) > 0:
+        print(json.dumps(record,indent=3,sort_keys=True))
     pass
 
 
 def main():
 
     services = {"s3":["buckets"]}
-    services = {"iam":["policies","groups","roles","users"]}
+    #services = {"iam":["policies","groups","roles","users"]}
+    #services = {"iam":["users"]}
     for service in services.keys():
         for subservice in services[service]:
+
             info = getBaseInfo(service, subservice)
             info = getInfoWithProblems(service, info)
 
