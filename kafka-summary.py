@@ -5,7 +5,6 @@
 # with the problem info reported by Scout2.
 
 import json
-from pprint import pprint
 
 data = {}
 
@@ -30,11 +29,12 @@ def getOrLoadData():
     return data
 
 
-def getBaseInfo(service):
+def getBaseInfo(service, subservice):
     try:
-        return getOrLoadData()["services"][service]["buckets"]
+        info = getOrLoadData()["services"][service][subservice]
+        return info
     except KeyError:
-        print("No %s info to get info for." % service)
+        print("No %s %s info to get info for." % (service,subservice))
         return {}
 
 
@@ -42,7 +42,7 @@ def getBaseInfo(service):
 def getInfoWithProblems(service, info):
     data = getOrLoadData()
 
-    print("Enhancing %d info for service %s" % (len(info), service))
+    print("Enhancing %d records for service %s" % (len(info), service))
 
     problems = data["services"][service]["findings"]
 
@@ -58,6 +58,15 @@ def getInfoWithProblems(service, info):
                 info[info_id]["problems"].append(_select_keys(["description","level"], problem))
 
         info[info_id] = _ignore_keys(["users","roles", "groups"], info[info_id])
+
+        # turn nested dictionaries into json pretty-strings
+        # to not error in ElasticSearch
+        for k in info[info_id].keys():
+            if isinstance(info[info_id][k], dict) or\
+                    (isinstance(info[info_id][k], list) and len(info[info_id][k]) > 0 and isinstance(info[info_id][k][0], dict)):
+                info[info_id][k] = json.dumps(info[info_id][k], indent=3)
+
+
     return info
 
 
@@ -81,16 +90,22 @@ def _ignore_keys(unwanted, mydict):
 # prepare and send a given record to kafka (insert @timestamp, etc.)
 def send_to_kafka(record):
     # TODO send to kafka
-    pprint(record)
+    print(json.dumps(record,indent=3))
     pass
 
 
 def main():
-    info = getBaseInfo("s3")
-    info = getInfoWithProblems("s3", info)
 
-    for i in info.values(): # no problem ignoring keys, since 'id' is already in the values dict
-        send_to_kafka(i)
+    services = {"s3":["buckets"]}
+    services = {"iam":["policies","groups","roles","users"]}
+    for service in services.keys():
+        for subservice in services[service]:
+            info = getBaseInfo(service, subservice)
+            info = getInfoWithProblems(service, info)
+
+
+            for i in info.values(): # no problem ignoring keys, since 'id' is already in the values dict
+                send_to_kafka(i)
 
 
 main()
