@@ -30,37 +30,39 @@ def getOrLoadData():
     return data
 
 
-def getBaseInfo():
+def getBaseInfo(service):
     try:
-        return getOrLoadData()["services"]["s3"]["buckets"]
+        return getOrLoadData()["services"][service]["buckets"]
     except KeyError:
-        print "No s3 buckets to get info for."
+        print("No %s info to get info for." % service)
         return {}
 
 
-# iterate through the problems and enhance bucket record with an array of their problems
-def getInfoWithProblems(buckets):
+# iterate through the problems and enhance info record with an array of their problems
+def getInfoWithProblems(service, info):
     data = getOrLoadData()
 
-    print "Enhancing %d buckets" % len(buckets)
+    print("Enhancing %d info for service %s" % (len(info), service))
 
-    problems = data["services"]["s3"]["findings"]
+    problems = data["services"][service]["findings"]
 
-    for bucket_id in buckets.keys():
-        if not "problems" in buckets[bucket_id]:
-            buckets[bucket_id]["problems"] = []
+    for info_id in info.keys():
+        if not "problems" in info[info_id]:
+            info[info_id]["problems"] = []
 
         for problem_k in problems.keys():
             problem = problems[problem_k]
 
-            if bucket_id in ",".join(problem["items"]): #get around the wierd prefix and suffix
+            if info_id in ",".join(problem["items"]): #get around the wierd prefix and suffix
 
-                buckets[bucket_id]["problems"].append(_select(problem, ["description","level"]))
-    return buckets
+                info[info_id]["problems"].append(_select_keys(["description","level"], problem))
+
+        info[info_id] = _ignore_keys(["users","roles", "groups"], info[info_id])
+    return info
 
 
 # select only the keys that are wanted (not the ones with global scope)
-def _select(mydict, wanted):
+def _select_keys(wanted, mydict):
     p = {}
     for k in mydict:
         if k in wanted:
@@ -68,6 +70,13 @@ def _select(mydict, wanted):
 
     return p
 
+def _ignore_keys(unwanted, mydict):
+    p = {}
+    for k in mydict:
+        if k not in unwanted:
+            p[k] = mydict[k]
+
+    return p
 
 # prepare and send a given record to kafka (insert @timestamp, etc.)
 def send_to_kafka(record):
@@ -77,11 +86,12 @@ def send_to_kafka(record):
 
 
 def main():
-    buckets = getBaseInfo()
-    buckets = getInfoWithProblems(buckets)
+    info = getBaseInfo("s3")
+    info = getInfoWithProblems("s3", info)
 
-    for bucket in buckets.values(): # no problem ignoring keys, since 'id' is already in the values dict
-        send_to_kafka(bucket)
+    for i in info.values(): # no problem ignoring keys, since 'id' is already in the values dict
+        send_to_kafka(i)
+
 
 main()
 
