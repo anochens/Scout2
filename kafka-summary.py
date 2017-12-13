@@ -29,12 +29,27 @@ def getOrLoadData():
     return data
 
 
-def getBaseInfo(service, subservice):
+def getBaseInfo(args):
     try:
-        info = getOrLoadData()["services"][service][subservice]
+        info = getOrLoadData()["services"]
+        for arg in args:
+            print("arg is %s" % arg)
+
+            # need to handle 'id' specially
+            if arg == 'id':
+                print('descending on an id')
+                info = _descend(info)
+            else:
+                print("trying to go into %s" % arg)
+                if info == [] or info == {}:
+                    break # cant go any farther down
+
+                info = info[arg]
+
+            print("went into %s" % arg)
         return info
     except KeyError:
-        print("No %s %s info to get info for." % (service,subservice))
+        print("No  info to get info for path %s." % (str(args)))
         return {}
 
 
@@ -67,13 +82,20 @@ def getInfoWithProblems(service, info):
             if info_id in ",".join(problem["items"]): #get around the wierd prefix and suffix
 
                 info[info_id]["problems"].append(_select_keys(["description","level"], problem))
-                info[info_id]["problems"].append(problem)
 
         info[info_id] = _ignore_keys(["users","roles", "groups"], info[info_id])
         #info[info_id] = _cleanForES(info[info_id])
 
     return info
 
+# descend into an array without the keys, similar to jq's .[] functionality
+def _descend(mydict):
+    result = []
+    for v in mydict.values():
+        if isinstance(v, list):
+            result.append(v)
+
+    return result
 
 # select only the keys that are wanted (not the ones with global scope)
 def _select_keys(wanted, mydict):
@@ -102,14 +124,19 @@ def send_to_kafka(record):
 
 def main():
 
-    services = {"s3":["buckets"]}
-    #services = {"iam":["policies","groups","roles","users"]}
-    #services = {"iam":["users"]}
-    for service in services.keys():
-        for subservice in services[service]:
+    services = [["s3","buckets"]]
+    services = [["iam","users"]]
+    #services = [["ec2","regions","id","vpcs","id","network_interfaces"]]
 
-            info = getBaseInfo(service, subservice)
-            info = getInfoWithProblems(service, info)
+    for path_list in services:
+
+            info = getBaseInfo(path_list)
+
+            if info == [] or info == {}:
+                print("invalid, skipping to the next one")
+                continue
+
+            info = getInfoWithProblems(path_list[0], info)
 
 
             for i in info.values(): # no problem ignoring keys, since 'id' is already in the values dict
