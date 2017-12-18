@@ -38,13 +38,13 @@ def getBaseInfo(args):
             # need to handle 'id' specially
             if arg == 'id':
                 print('descending on an id')
-                info = _descend(info)
+                info = descend(info)
             else:
                 print("trying to go into %s" % arg)
                 if info == [] or info == {}:
                     break # cant go any farther down
 
-                info = info[arg]
+                info = apply(arg, info)
 
             print("went into %s" % arg)
         return info
@@ -83,19 +83,10 @@ def getInfoWithProblems(service, info):
 
                 info[info_id]["problems"].append(_select_keys(["description","level"], problem))
 
-        info[info_id] = _ignore_keys(["users","roles", "groups"], info[info_id])
-        #info[info_id] = _cleanForES(info[info_id])
+        info[info_id] = _ignore_keys(["users", "roles", "groups"], info[info_id])
+        info[info_id] = _cleanForES(info[info_id])
 
     return info
-
-# descend into an array without the keys, similar to jq's .[] functionality
-def _descend(mydict):
-    result = []
-    for v in mydict.values():
-        if isinstance(v, list):
-            result.append(v)
-
-    return result
 
 # select only the keys that are wanted (not the ones with global scope)
 def _select_keys(wanted, mydict):
@@ -121,13 +112,78 @@ def send_to_kafka(record):
         print(json.dumps(record,indent=3,sort_keys=True))
     pass
 
+def apply(key, entity):
+
+    if isinstance(entity, list):
+        return list(map(lambda x: x[key] if (isinstance(x, dict) and key in x) else None, entity))
+
+    # if basic
+    if isinstance(entity, dict) and key in entity:
+        return entity[key]
+
+    return None
+
+def descend(entity):
+
+    if isinstance(entity, dict): # add all values to new array, ignoring keys
+        result = []
+        for k in sorted(entity.keys()):
+            if isinstance(entity[k], list):
+                result.extend(entity[k])
+            else:
+                result.append(entity[k])
+
+        if len(result) == 1:
+            return result[0]
+
+        return result
+
+    elif isinstance(entity, list):
+        result = []
+        for i in entity:
+            inside = descend(i)
+            result.append(inside)
+        return result
+
+    # else if is normal
+    return None
+
+
+
+def runtests():
+    myobj1 = {"x":1}
+    myobj2 = [{"x":1},{"x":2}]
+    myobj3 = [{"x":1},{"y":2}]
+    myobj4 = {"a":1,"b":2,"c":3}
+    myobj5 = {"a":1,"b":{"something":"else"},"c":3}
+    myobj6 = [{"something":"aaaa"},{"something":"else"},{"something":"cccc"}]
+
+    assert (apply("x", myobj1) == 1)
+    assert (apply("y", myobj1) is None)
+
+    print(apply("x", myobj2))
+    assert (apply("x", myobj2) == [1,2])
+
+    assert (apply("x", myobj3) == [1,None])
+    assert (apply("ededed",myobj1) is None)
+
+    assert (descend({"a":1}) == 1)
+
+    assert (descend(myobj4) == [1,2,3])
+    assert (descend(myobj5) == [1,{"something":"else"},3])
+
+    assert (apply("something",descend(myobj5)) == [None,"else",None])
+    print(descend(myobj6))
+    assert (descend(myobj6) == ["aaaa","else","cccc"])
+
 
 def main():
+    # GET NON NULLS
+    #list(filter(lambda x: x != {} and x!=[] and not x is None, info))
 
     services = [["s3","buckets"]]
-    services = [["iam","users"]]
-    #services = [["ec2","regions","id","vpcs","id","network_interfaces"]]
-
+    #services = [["iam","users"]]
+    services = [["ec2","regions","id","vpcs","id","instances"]]
     for path_list in services:
 
             info = getBaseInfo(path_list)
@@ -144,4 +200,7 @@ def main():
 
 
 main()
+
+
+
 
