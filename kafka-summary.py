@@ -177,16 +177,30 @@ def runtests():
     assert (descend(myobj6) == ["aaaa","else","cccc"])
 
 
-def main():
-    # GET NON NULLS
-    #list(filter(lambda x: x != {} and x!=[] and not x is None, info))
+def collapseToDict(entity):
+    result = entity
 
+    if isinstance(entity, list):
+        result = {}
+        for i in entity:
+            if i != [] and i != {} and i is not None:
+                if isinstance(i, dict):
+                    for k in i.keys():
+                        result[k] = i[k]
+
+    return result
+
+
+def main():
+    runtests()
     services = [["s3","buckets"]]
     #services = [["iam","users"]]
     services = [["ec2","regions","id","vpcs","id","instances"]]
+    #services = [["ec2","regions","id","vpcs","id","security_groups"]]
     for path_list in services:
 
             info = getBaseInfo(path_list)
+            info = collapseToDict(info)
 
             if info == [] or info == {}:
                 print("invalid, skipping to the next one")
