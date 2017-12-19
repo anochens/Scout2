@@ -84,7 +84,7 @@ def getInfoWithProblems(service, info):
                 info[info_id]["problems"].append(_select_keys(["description","level"], problem))
 
         info[info_id] = _ignore_keys(["users", "roles", "groups"], info[info_id])
-        info[info_id] = _cleanForES(info[info_id])
+
 
     return info
 
@@ -193,10 +193,17 @@ def collapseToDict(entity):
 
 def main():
     runtests()
-    services = [["s3","buckets"]]
-    #services = [["iam","users"]]
-    services = [["ec2","regions","id","vpcs","id","instances"]]
-    #services = [["ec2","regions","id","vpcs","id","security_groups"]]
+    services = [
+        ["vpc","regions","id","vpcs","id","network_acls"],
+        ["vpc","regions","id","vpcs","id","subnets"],
+        ["vpc","regions","id","vpcs"],
+        ["s3","buckets"],
+        ["ec2","regions","id","vpcs","id","instances"],
+        ["ec2","regions","id","vpcs","id","interfaces"],
+        ["ec2","regions","id","vpcs","id","security_groups"],
+        ["iam","users"],
+        ["iam","roles"]
+    ]
     for path_list in services:
 
             info = getBaseInfo(path_list)
@@ -207,9 +214,10 @@ def main():
                 continue
 
             info = getInfoWithProblems(path_list[0], info)
-
+            assert(info != [] and info != {} and info is not None)
 
             for i in info.values(): # no problem ignoring keys, since 'id' is already in the values dict
+                #i = _cleanForES(i)
                 send_to_kafka(i)
 
 
